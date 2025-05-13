@@ -7,9 +7,17 @@
     "deploy": "firebase deploy",
     "serve": "firebase serve"
   },
-  "author": "",
+  "author": "venkteshmashal",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Venktesh-09/simon-says-game.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Venktesh-09/simon-says-game/issues"
+  },
+  "homepage": "https://github.com/Venktesh-09/simon-says-game#readme",
   "devDependencies": {
-    "firebase-tools": "^12.0.0"
+    "firebase-tools": "^14.3.1"
   }
 }
