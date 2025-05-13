@@ -1,14 +1,25 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Ensure users can only read their own scores and the top leaderboard scores
     match /scores/{scoreId} {
-      // Allow read access to anyone
-      allow read: if true;
+      // Anyone can read leaderboard data (top scores)
+      allow read: if request.auth != null;
       
-      // Only allow write access if the user is authenticated
-      // and the userId in the document matches the authenticated user's ID
-      allow write: if request.auth != null && 
-                    request.resource.data.userId == request.auth.uid;
+      // Users can only write their own scores
+      allow create: if request.auth != null && 
+                     request.resource.data.userId == request.auth.uid &&
+                     request.resource.data.displayName == request.auth.token.name &&
+                     request.resource.data.email == request.auth.token.email;
+                     
+      // No updates or deletes allowed for scores
+      allow update, delete: if false;
+    }
+    
+    // Deny access to any other collection
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

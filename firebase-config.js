@@ -7,7 +7,7 @@ const firebaseConfig = {
   apiKey: 'AIzaSyCw465imuFfgRiBjVwKQNRK-gGDm5i1SSY',
   authDomain: 'simon-says-01.firebaseapp.com',
   projectId: 'simon-says-01',
-  storageBucket: 'simon-says-01.firebasestorage.app',
+  storageBucket: 'simon-says-01.firebaseapp.com',  // corrected domain
   messagingSenderId: '134105981219',
   appId: '1:134105981219:web:399c09bfd09cde183eec96',
   measurementId: 'G-PJ2205S127',

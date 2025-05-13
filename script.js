@@ -1,6 +1,19 @@
-import { auth, scoresCollection } from './firebase-config.js';
-
-import { signOut } from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-auth.js';
+import { auth, scoresCollection, db } from './firebase-config.js';
+import { 
+  signOut, 
+  signInWithPopup,
+  GoogleAuthProvider, 
+  onAuthStateChanged 
+} from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-auth.js';
+import { 
+  addDoc, 
+  serverTimestamp, 
+  query, 
+  where, 
+  orderBy, 
+  limit, 
+  getDocs 
+} from 'https://www.gstatic.com/firebasejs/11.7.1/firebase-firestore.js';
 
 // DOM Elements
 const gameButtons = {
@@ -31,9 +44,16 @@ const leaderboardEmpty = document.getElementById('leaderboard-empty');
 const leaderboardLogin = document.getElementById('leaderboard-login');
 
 // Bootstrap Modal
-const gameOverModal = new bootstrap.Modal(
-  document.getElementById('game-over-modal')
-);
+let gameOverModal;
+document.addEventListener('DOMContentLoaded', () => {
+  // Initialize Bootstrap modal
+  gameOverModal = new bootstrap.Modal(document.getElementById('game-over-modal'));
+  
+  // Load leaderboard if user is signed in
+  if (auth.currentUser) {
+    loadLeaderboard();
+  }
+});
 
 // Game state
 let sequence = [];
@@ -66,7 +86,7 @@ if (darkModeEnabled) {
 startButton.addEventListener('click', startGame);
 playAgainButton.addEventListener('click', startGame);
 loginButton.addEventListener('click', signInWithGoogle);
-logoutButton.addEventListener('click', signOut);
+logoutButton.addEventListener('click', () => signOut(auth));
 darkModeToggle.addEventListener('click', toggleDarkMode);
 refreshLeaderboardButton.addEventListener('click', loadLeaderboard);
 
@@ -225,7 +245,9 @@ function gameOver() {
   }
 
   // Show game over modal
-  gameOverModal.show();
+  if (gameOverModal) {
+    gameOverModal.show();
+  }
 }
 
 // Update score display function
@@ -254,12 +276,10 @@ function toggleDarkMode() {
 // Sign in with Google
 function signInWithGoogle() {
   const provider = new GoogleAuthProvider();
-  signInWithPopup(auth, provider);
-}
-
-// Sign out function
-function signOut() {
-  signOut(auth);
+  signInWithPopup(auth, provider)
+    .catch(error => {
+      console.error('Error signing in with Google:', error);
+    });
 }
 
 // Auth state change listener
@@ -293,12 +313,13 @@ onAuthStateChanged(auth, (user) => {
     leaderboardTable.classList.add('d-none');
     leaderboardEmpty.classList.add('d-none');
     leaderboardLogin.classList.remove('d-none');
+    leaderboardLoading.classList.add('d-none');
   }
 });
 
 // Firestore Functions
 // Save score to Firestore
-function saveScore(score) {
+async function saveScore(score) {
   const user = auth.currentUser;
   if (!user) return;
 
@@ -310,53 +331,54 @@ function saveScore(score) {
     timestamp: serverTimestamp(),
   };
 
-  // Check if this is a new high score for the user
-  scoresCollection
-    .where('userId', '==', user.uid)
-    .orderBy('score', 'desc')
-    .limit(1)
-    .get()
-    .then((snapshot) => {
-      if (snapshot.empty || snapshot.docs[0].data().score < score) {
-        // This is a new high score or first score
-        addDoc(scoresCollection, scoreData)
-          .then(() => {
-            console.log('Score saved successfully');
-            loadLeaderboard();
-          })
-          .catch((error) => {
-            console.error('Error saving score:', error);
-          });
-      } else {
-        console.log('Not a new high score');
-      }
-    })
-    .catch((error) => {
-      console.error('Error checking high score:', error);
-    });
+  try {
+    // Check if this is a new high score for the user
+    const userScoresQuery = query(
+      scoresCollection,
+      where('userId', '==', user.uid),
+      orderBy('score', 'desc'),
+      limit(1)
+    );
+    
+    const snapshot = await getDocs(userScoresQuery);
+    
+    if (snapshot.empty || snapshot.docs[0].data().score < score) {
+      // This is a new high score or first score
+      await addDoc(scoresCollection, scoreData);
+      console.log('Score saved successfully');
+      loadLeaderboard();
+    } else {
+      console.log('Not a new high score');
+    }
+  } catch (error) {
+    console.error('Error saving score:', error);
+  }
 }
 
 // Get user's high score
-function getUserHighScore(userId) {
-  scoresCollection
-    .where('userId', '==', userId)
-    .orderBy('score', 'desc')
-    .limit(1)
-    .get()
-    .then((snapshot) => {
-      if (!snapshot.empty) {
-        const userHighScore = snapshot.docs[0].data().score;
-        highScore = userHighScore;
-        highScoreElement.textContent = highScore;
-      }
-    })
-    .catch((error) => {
-      console.error('Error getting user high score:', error);
-    });
+async function getUserHighScore(userId) {
+  try {
+    const userScoresQuery = query(
+      scoresCollection,
+      where('userId', '==', userId),
+      orderBy('score', 'desc'),
+      limit(1)
+    );
+    
+    const snapshot = await getDocs(userScoresQuery);
+    
+    if (!snapshot.empty) {
+      const userHighScore = snapshot.docs[0].data().score;
+      highScore = userHighScore;
+      highScoreElement.textContent = highScore;
+    }
+  } catch (error) {
+    console.error('Error getting user high score:', error);
+  }
 }
 
 // Load leaderboard
-function loadLeaderboard() {
+async function loadLeaderboard() {
   if (!auth.currentUser) {
     leaderboardTable.classList.add('d-none');
     leaderboardEmpty.classList.add('d-none');
@@ -370,53 +392,48 @@ function loadLeaderboard() {
   leaderboardLogin.classList.add('d-none');
   leaderboardLoading.classList.remove('d-none');
 
-  scoresCollection
-    .orderBy('score', 'desc')
-    .limit(10)
-    .get()
-    .then((snapshot) => {
-      leaderboardLoading.classList.add('d-none');
+  try {
+    const leaderboardQuery = query(
+      scoresCollection,
+      orderBy('score', 'desc'),
+      limit(10)
+    );
+    
+    const snapshot = await getDocs(leaderboardQuery);
+    
+    leaderboardLoading.classList.add('d-none');
 
-      if (snapshot.empty) {
-        leaderboardEmpty.classList.remove('d-none');
-        return;
+    if (snapshot.empty) {
+      leaderboardEmpty.classList.remove('d-none');
+      return;
+    }
+
+    // Clear existing rows
+    leaderboardBody.innerHTML = '';
+
+    // Add new rows
+    snapshot.docs.forEach((doc, index) => {
+      const data = doc.data();
+      const row = document.createElement('tr');
+
+      // Highlight current user
+      if (data.userId === auth.currentUser.uid) {
+        row.classList.add('table-primary');
       }
 
-      // Clear existing rows
-      leaderboardBody.innerHTML = '';
+      row.innerHTML = `
+        <td>${index + 1}</td>
+        <td>${data.displayName}</td>
+        <td>${data.score}</td>
+      `;
 
-      // Add new rows
-      snapshot.docs.forEach((doc, index) => {
-        const data = doc.data();
-        const row = document.createElement('tr');
-
-        // Highlight current user
-        if (data.userId === auth.currentUser.uid) {
-          row.classList.add('table-primary');
-        }
-
-        row.innerHTML = `
-                    <td>${index + 1}</td>
-                    <td>${data.displayName}</td>
-                    <td>${data.score}</td>
-                `;
-
-        leaderboardBody.appendChild(row);
-      });
-
-      leaderboardTable.classList.remove('d-none');
-    })
-    .catch((error) => {
-      console.error('Error loading leaderboard:', error);
-      leaderboardLoading.classList.add('d-none');
-      leaderboardEmpty.classList.remove('d-none');
+      leaderboardBody.appendChild(row);
     });
-}
 
-// Initialize game on load
-document.addEventListener('DOMContentLoaded', () => {
-  // Load leaderboard if user is signed in
-  if (auth.currentUser) {
-    loadLeaderboard();
+    leaderboardTable.classList.remove('d-none');
+  } catch (error) {
+    console.error('Error loading leaderboard:', error);
+    leaderboardLoading.classList.add('d-none');
+    leaderboardEmpty.classList.remove('d-none');
   }
-});
+}
